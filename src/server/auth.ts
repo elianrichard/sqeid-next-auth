@@ -6,6 +6,7 @@ import {
   type NextAuthOptions,
 } from "next-auth";
 import DiscordProvider from "next-auth/providers/discord";
+import GitHubProvider from "next-auth/providers/github";
 
 import { env } from "@/env.mjs";
 import { db } from "@/server/db";
@@ -37,6 +38,7 @@ declare module "next-auth" {
  * @see https://next-auth.js.org/configuration/options
  */
 export const authOptions: NextAuthOptions = {
+  debug: true,
   callbacks: {
     session: ({ session, user }) => ({
       ...session,
@@ -45,13 +47,87 @@ export const authOptions: NextAuthOptions = {
         id: user.id,
       },
     }),
+    // jwt: ({ token, account }) => {
+    //   // console.log({ account, token });
+    //   if (account?.accessToken) {
+    //     token.accessToken = account.accessToken;
+    //   }
+    //   return token;
+    // },
+    // jwt: async (token, user, account, profile, isNewUser) => {
+    //   // Add access_token to the token right after signin
+    //   if (account?.accessToken) {
+    //     token.accessToken = account.accessToken;
+    //   }
+    //   return token;
+    // },
   },
   adapter: PrismaAdapter(db),
   providers: [
+    {
+      id: "simas-id",
+      name: "SIMAS-ID",
+      type: "oauth",
+      version: "2.0",
+      clientId: "simas-id-elian",
+      clientSecret: "ZpBhWSxN4iP1x1nQjLH4jybWVexMVAqE",
+      authorization: {
+        url: "https://login-dev.simas-id.com/v2/oidc/authorize",
+        params: {
+          scope: "openid email profile",
+          code_challenge: "NX8_pQ7wcPVSfNtiiQhLfZHasAfvPxGX5SpKXHsVq-g",
+          code_challenge_method: "SHA256",
+          response_type: "code",
+        },
+      },
+      checks: ["pkce", "state"],
+      // authorization: "https://github.com/login/oauth/authorize",
+      token: {
+        url: "https://api-dev.simas-id.com/v1/oidc/token",
+        // params: {
+        //   grant_type: "authorization_code",
+        //   client_id: "simas-id-elian",
+        //   code_verifier: "HHMbPYFqJzpFm9UbZtdhMZlrWTZ0u3276VEHF9GNz_0",
+        //   redirect_uri: "http://localhost:3000/api/auth/callback/simas-id",
+        // },
+        async request(context) {
+          const response = await fetch(
+            "https://api-dev.simas-id.com/v1/oidc/token",
+            {
+              method: "POST",
+              headers: {
+                Accept: "application.json",
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                grant_type: "authorization_code",
+                client_id: "simas-id-elian",
+                code: context.params.code,
+                code_verifier: "HHMbPYFqJzpFm9UbZtdhMZlrWTZ0u3276VEHF9GNz_0",
+                redirect_uri:
+                  "http://localhost:3000/api/auth/callback/simas-id",
+              }),
+            },
+          );
+          const { refresh_expires_in, ...body } = await response.json();
+          return { tokens: body };
+        },
+      },
+      // userinfo: "https://kapi.kakao.com/v2/user/me",
+      profile(profile: { sub: string; preferred_username: string }) {
+        return {
+          id: profile.sub,
+          name: profile.preferred_username,
+          email: `${profile.preferred_username}@gmail.com`,
+          image: "",
+        };
+      },
+    },
     DiscordProvider({
       clientId: env.DISCORD_CLIENT_ID,
       clientSecret: env.DISCORD_CLIENT_SECRET,
     }),
+    GitHubProvider({ clientId: "", clientSecret: "" }),
     /**
      * ...add more providers here.
      *
